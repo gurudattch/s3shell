@@ -22,15 +22,25 @@ echo " cd ..                   Go back"
 echo " search <pattern>        Search file names"
 echo " size                    Show bucket size"
 echo " get <file>              Download file"
-echo " cat <file>              Print file to terminal"
-echo " head <file>             Show first lines"
+echo " cat <file>              Print file"
+echo " head <file>             First lines"
 echo " grep <file> <pattern>   Search inside file"
 echo " download <folder>       Recursive download"
 echo " info <file>             File metadata"
 echo " open <file>             Open object URL"
-echo " testwrite               Test public write access"
+echo " testwrite               Test public write"
 echo " put <file>              Upload file"
 echo " rm <file>               Delete file"
+
+echo ""
+echo "Recon commands:"
+echo " scan                    Sensitive file discovery"
+echo " enum <domain>           Generate bucket names"
+echo " mass <wordlist>         Scan bucket list"
+echo " parallel <wordlist>     Fast bucket scanner"
+
+echo ""
+echo "Other:"
 echo " clear                   Clear screen"
 echo " help                    Show help"
 echo " exit                    Exit shell"
@@ -61,81 +71,81 @@ tree_cmd() {
 
 cd_cmd() {
 
-    if [ "$1" == ".." ]; then
-        CURRENT_PATH=$(dirname "$CURRENT_PATH")
-        [ "$CURRENT_PATH" == "." ] && CURRENT_PATH=""
-    else
-        CURRENT_PATH="${CURRENT_PATH}$1/"
-    fi
+if [ "$1" == ".." ]; then
+CURRENT_PATH=$(dirname "$CURRENT_PATH")
+[ "$CURRENT_PATH" == "." ] && CURRENT_PATH=""
+else
+CURRENT_PATH="${CURRENT_PATH}$1/"
+fi
 
 }
 
 search_cmd() {
-    aws s3 ls "s3://${CURRENT_BUCKET}" \
-        --recursive \
-        --no-sign-request | grep "$1"
+aws s3 ls "s3://${CURRENT_BUCKET}" \
+--recursive \
+--no-sign-request | grep "$1"
 }
 
 size_cmd() {
-    aws s3 ls "s3://${CURRENT_BUCKET}" \
-        --recursive \
-        --human-readable \
-        --summarize \
-        --no-sign-request
+aws s3 ls "s3://${CURRENT_BUCKET}" \
+--recursive \
+--human-readable \
+--summarize \
+--no-sign-request
 }
 
 get_cmd() {
 
-    aws s3 cp \
-    "s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
-    . \
-    --no-sign-request \
-    --progress
+aws s3 cp \
+"s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+. \
+--no-sign-request \
+--progress
 
 }
 
 cat_cmd() {
 
-    aws s3 cp \
-    "s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
-    - \
-    --no-sign-request
+aws s3 cp \
+"s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+- \
+--no-sign-request
 
 }
 
 head_cmd() {
 
-    aws s3 cp \
-    "s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
-    - \
-    --no-sign-request | head
+aws s3 cp \
+"s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+- \
+--no-sign-request | head
 
 }
 
 grep_cmd() {
 
-    aws s3 cp \
-    "s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
-    - \
-    --no-sign-request | grep "$2"
+aws s3 cp \
+"s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+- \
+--no-sign-request | grep "$2"
 
 }
 
 download_cmd() {
 
-    aws s3 sync \
-    "s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
-    "./$1" \
-    --no-sign-request
+aws s3 sync \
+"s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+"./$1" \
+--no-sign-request
 
 }
 
 info_cmd() {
 
-    aws s3api head-object \
-        --bucket "$CURRENT_BUCKET" \
-        --key "${CURRENT_PATH}$1" \
-        --no-sign-request
+aws s3api head-object \
+--bucket "$CURRENT_BUCKET" \
+--key "${CURRENT_PATH}$1" \
+--no-sign-request
 
 }
 
@@ -177,10 +187,129 @@ aws s3 rm \
 
 }
 
+########################################
+# Sensitive file discovery
+########################################
+
+sensitive_scan() {
+
+patterns=(
+".env"
+".git/config"
+"backup.sql"
+"db.sql"
+"config.json"
+"credentials"
+"password"
+"id_rsa"
+".htpasswd"
+"aws_access"
+"secret"
+"keys"
+"backup.zip"
+"database"
+)
+
+echo "[*] Enumerating bucket..."
+
+aws s3 ls "s3://${CURRENT_BUCKET}" \
+--recursive \
+--no-sign-request > /tmp/s3objects.txt
+
+for p in "${patterns[@]}"
+do
+echo "[*] Searching $p"
+grep -i "$p" /tmp/s3objects.txt
+done
+
+}
+
+########################################
+# Domain → bucket enum
+########################################
+
+enum_buckets() {
+
+domain=$1
+
+candidates=(
+"$domain"
+"${domain//./-}"
+"${domain%%.*}"
+"cdn-$domain"
+"$domain-cdn"
+"$domain-assets"
+"$domain-backup"
+"$domain-backups"
+"$domain-storage"
+"$domain-media"
+"assets-$domain"
+"static-$domain"
+)
+
+for bucket in "${candidates[@]}"
+do
+
+echo "[*] Checking $bucket"
+
+aws s3 ls "s3://$bucket" \
+--no-sign-request \
+2>/dev/null && echo "[+] FOUND: $bucket"
+
+done
+
+}
+
+########################################
+# Wordlist bucket scan
+########################################
+
+mass_scan() {
+
+wordlist=$1
+
+while read bucket
+do
+
+aws s3 ls "s3://$bucket" \
+--no-sign-request \
+>/dev/null 2>&1
+
+if [ $? -eq 0 ]; then
+echo "[+] Public bucket found: $bucket"
+fi
+
+done < "$wordlist"
+
+}
+
+########################################
+# Fast parallel scan
+########################################
+
+parallel_scan() {
+
+wordlist=$1
+
+cat "$wordlist" | xargs -P 20 -I {} bash -c '
+
+aws s3 ls s3://{} \
+--no-sign-request \
+>/dev/null 2>&1
+
+if [ $? -eq 0 ]; then
+echo "[+] PUBLIC: {}"
+fi
+
+'
+
+}
+
 echo "Interactive S3 Shell"
 echo "Type 'help' for commands"
 
-while true; do
+while true
+do
 
 prompt
 
@@ -189,92 +318,108 @@ read -r CMD ARG1 ARG2
 case $CMD in
 
 buckets)
-    list_buckets
-    ;;
+list_buckets
+;;
 
 use)
-    use_bucket "$ARG1"
-    ;;
+use_bucket "$ARG1"
+;;
 
 pwd)
-    pwd_cmd
-    ;;
+pwd_cmd
+;;
 
 ls)
-    ls_cmd
-    ;;
+ls_cmd
+;;
 
 tree)
-    tree_cmd
-    ;;
+tree_cmd
+;;
 
 cd)
-    cd_cmd "$ARG1"
-    ;;
+cd_cmd "$ARG1"
+;;
 
 search)
-    search_cmd "$ARG1"
-    ;;
+search_cmd "$ARG1"
+;;
 
 size)
-    size_cmd
-    ;;
+size_cmd
+;;
 
 get)
-    get_cmd "$ARG1"
-    ;;
+get_cmd "$ARG1"
+;;
 
 cat)
-    cat_cmd "$ARG1"
-    ;;
+cat_cmd "$ARG1"
+;;
 
 head)
-    head_cmd "$ARG1"
-    ;;
+head_cmd "$ARG1"
+;;
 
 grep)
-    grep_cmd "$ARG1" "$ARG2"
-    ;;
+grep_cmd "$ARG1" "$ARG2"
+;;
 
 download)
-    download_cmd "$ARG1"
-    ;;
+download_cmd "$ARG1"
+;;
 
 info)
-    info_cmd "$ARG1"
-    ;;
+info_cmd "$ARG1"
+;;
 
 open)
-    open_cmd "$ARG1"
-    ;;
+open_cmd "$ARG1"
+;;
 
 testwrite)
-    testwrite_cmd
-    ;;
+testwrite_cmd
+;;
 
 put)
-    put_cmd "$ARG1"
-    ;;
+put_cmd "$ARG1"
+;;
 
 rm)
-    delete_cmd "$ARG1"
-    ;;
+delete_cmd "$ARG1"
+;;
+
+scan)
+sensitive_scan
+;;
+
+enum)
+enum_buckets "$ARG1"
+;;
+
+mass)
+mass_scan "$ARG1"
+;;
+
+parallel)
+parallel_scan "$ARG1"
+;;
 
 clear)
-    clear
-    ;;
+clear
+;;
 
 help)
-    help_cmd
-    ;;
+help_cmd
+;;
 
 exit)
-    break
-    ;;
+break
+;;
 
 *)
-    echo "Unknown command. Type 'help'"
-    ;;
+echo "Unknown command. Type 'help'"
+;;
 
 esac
 
