@@ -1,0 +1,281 @@
+#!/bin/bash
+
+CURRENT_BUCKET=""
+CURRENT_PATH=""
+
+GREEN="\033[0;32m"
+NC="\033[0m"
+
+prompt() {
+    echo -ne "${GREEN}s3://${CURRENT_BUCKET}/${CURRENT_PATH}> ${NC}"
+}
+
+help_cmd() {
+echo "Available commands:"
+echo " buckets                 List accessible buckets"
+echo " use <bucket>            Select bucket"
+echo " pwd                     Show current path"
+echo " ls                      List objects"
+echo " tree                    Recursive listing"
+echo " cd <dir>                Enter directory"
+echo " cd ..                   Go back"
+echo " search <pattern>        Search file names"
+echo " size                    Show bucket size"
+echo " get <file>              Download file"
+echo " cat <file>              Print file to terminal"
+echo " head <file>             Show first lines"
+echo " grep <file> <pattern>   Search inside file"
+echo " download <folder>       Recursive download"
+echo " info <file>             File metadata"
+echo " open <file>             Open object URL"
+echo " testwrite               Test public write access"
+echo " put <file>              Upload file"
+echo " rm <file>               Delete file"
+echo " clear                   Clear screen"
+echo " help                    Show help"
+echo " exit                    Exit shell"
+}
+
+list_buckets() {
+    aws s3 ls --no-sign-request
+}
+
+use_bucket() {
+    CURRENT_BUCKET=$1
+    CURRENT_PATH=""
+}
+
+pwd_cmd() {
+    echo "s3://${CURRENT_BUCKET}/${CURRENT_PATH}"
+}
+
+ls_cmd() {
+    aws s3 ls "s3://${CURRENT_BUCKET}/${CURRENT_PATH}" --no-sign-request
+}
+
+tree_cmd() {
+    aws s3 ls "s3://${CURRENT_BUCKET}/${CURRENT_PATH}" \
+        --recursive \
+        --no-sign-request
+}
+
+cd_cmd() {
+
+    if [ "$1" == ".." ]; then
+        CURRENT_PATH=$(dirname "$CURRENT_PATH")
+        [ "$CURRENT_PATH" == "." ] && CURRENT_PATH=""
+    else
+        CURRENT_PATH="${CURRENT_PATH}$1/"
+    fi
+
+}
+
+search_cmd() {
+    aws s3 ls "s3://${CURRENT_BUCKET}" \
+        --recursive \
+        --no-sign-request | grep "$1"
+}
+
+size_cmd() {
+    aws s3 ls "s3://${CURRENT_BUCKET}" \
+        --recursive \
+        --human-readable \
+        --summarize \
+        --no-sign-request
+}
+
+get_cmd() {
+
+    aws s3 cp \
+    "s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+    . \
+    --no-sign-request \
+    --progress
+
+}
+
+cat_cmd() {
+
+    aws s3 cp \
+    "s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+    - \
+    --no-sign-request
+
+}
+
+head_cmd() {
+
+    aws s3 cp \
+    "s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+    - \
+    --no-sign-request | head
+
+}
+
+grep_cmd() {
+
+    aws s3 cp \
+    "s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+    - \
+    --no-sign-request | grep "$2"
+
+}
+
+download_cmd() {
+
+    aws s3 sync \
+    "s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+    "./$1" \
+    --no-sign-request
+
+}
+
+info_cmd() {
+
+    aws s3api head-object \
+        --bucket "$CURRENT_BUCKET" \
+        --key "${CURRENT_PATH}$1" \
+        --no-sign-request
+
+}
+
+open_cmd() {
+
+URL="https://${CURRENT_BUCKET}.s3.amazonaws.com/${CURRENT_PATH}$1"
+
+echo "$URL"
+
+xdg-open "$URL" 2>/dev/null
+
+}
+
+testwrite_cmd() {
+
+echo "test" > /tmp/s3test.txt
+
+aws s3 cp \
+/tmp/s3test.txt \
+"s3://${CURRENT_BUCKET}/s3test.txt" \
+--no-sign-request
+
+}
+
+put_cmd() {
+
+aws s3 cp \
+"$1" \
+"s3://${CURRENT_BUCKET}/${CURRENT_PATH}" \
+--no-sign-request
+
+}
+
+delete_cmd() {
+
+aws s3 rm \
+"s3://${CURRENT_BUCKET}/${CURRENT_PATH}$1" \
+--no-sign-request
+
+}
+
+echo "Interactive S3 Shell"
+echo "Type 'help' for commands"
+
+while true; do
+
+prompt
+
+read -r CMD ARG1 ARG2
+
+case $CMD in
+
+buckets)
+    list_buckets
+    ;;
+
+use)
+    use_bucket "$ARG1"
+    ;;
+
+pwd)
+    pwd_cmd
+    ;;
+
+ls)
+    ls_cmd
+    ;;
+
+tree)
+    tree_cmd
+    ;;
+
+cd)
+    cd_cmd "$ARG1"
+    ;;
+
+search)
+    search_cmd "$ARG1"
+    ;;
+
+size)
+    size_cmd
+    ;;
+
+get)
+    get_cmd "$ARG1"
+    ;;
+
+cat)
+    cat_cmd "$ARG1"
+    ;;
+
+head)
+    head_cmd "$ARG1"
+    ;;
+
+grep)
+    grep_cmd "$ARG1" "$ARG2"
+    ;;
+
+download)
+    download_cmd "$ARG1"
+    ;;
+
+info)
+    info_cmd "$ARG1"
+    ;;
+
+open)
+    open_cmd "$ARG1"
+    ;;
+
+testwrite)
+    testwrite_cmd
+    ;;
+
+put)
+    put_cmd "$ARG1"
+    ;;
+
+rm)
+    delete_cmd "$ARG1"
+    ;;
+
+clear)
+    clear
+    ;;
+
+help)
+    help_cmd
+    ;;
+
+exit)
+    break
+    ;;
+
+*)
+    echo "Unknown command. Type 'help'"
+    ;;
+
+esac
+
+done
