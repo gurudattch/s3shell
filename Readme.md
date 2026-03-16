@@ -19,7 +19,7 @@ Features:
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/s3shell.git && cd s3shell && chmod +x setup.sh && ./setup.sh
+git clone https://github.com/gurudattch/s3shell.git && cd s3shell && chmod +x setup.sh && ./setup.sh
 ```
 
 ---
