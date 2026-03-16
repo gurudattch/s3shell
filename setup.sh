@@ -32,13 +32,13 @@ then
 fi
 
 # Make script executable
-chmod +x s3shell.sh
+chmod +x s3shell
 
 # Install globally
 echo "[*] Installing binary..."
 
-sudo cp s3shell.sh /usr/local/bin/s3shell
-
+sudo cp s3shell /usr/local/bin/s3shell
+sudo cp s3shell /usr/bin/s3shell
 echo "[+] Installed successfully"
 
 echo ""
